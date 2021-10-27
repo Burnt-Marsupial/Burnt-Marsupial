@@ -1,10 +1,8 @@
 body
 {
     text-align: center;
-    font-size: 2em;
 }
-h1
+input
 {
-    width: 100%;
-    font-size: 5em;
+    width: 2em;
 }

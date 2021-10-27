@@ -1,85 +1,221 @@
 <?php
+    require_once("movie.php");
     require_once("include.php");
-    require_once("imdb.php");
+
     session_start();
-
-    $sql = createConnectionObject();
-    $tableName = "watchList";
-
-    if (isset($_POST["next"]))
+    
+    if (isset($_POST['movie']))
     {
-        $position = $_SESSION['position'];
+        $_SESSION['medium'] = "movie";
+        initialiseSession("movie");
+    }
+    else if (isset($_POST['tvSeries']))
+    {
+        $_SESSION['medium'] = "tvSeries";
+        initialiseSession("tvSeries");
+    }
+    else if (isset($_POST['up']))
+    {
+        if (matchCheck())
+        {
+            displayMatch();
+        }
+        else
+        {
+            matcher("up");
+        }
+    }
+    else if (isset($_POST['down']))
+    {
+        if (matchCheck())
+        {
+            displayMatch();
+        }
+        else
+        {
+            matcher("down");
+        }
     }
     else
     {
-        $position = 0;
+        homePage();
     }
 
-    $_SESSION['position'] = $position + 1;
-    $position = $_SESSION['position'];
-
-
-    if($_POST["yesNo"] == "yes")
+    function homePage()
     {
-        update($sql, $tableName, $position - 1);
-        $match = matchCheck($sql, $tableName);
-        $_POST["yesNo"] = " ";
+        headers("Movie Matcher", "style.css");
+        
+        h1("Movie Matcher");
+
+        openForm();
+
+        label("Clear Database");
+        input("checkbox", "clear");
+        br();
+        label("Number of users:");
+        input("number", "numUsers", "1", "2");
+        br();
+        button("movie", "Movies");
+        button("tvSeries", "Shows");
+
+        closeForm();
+
+        footers();
     }
 
-    if ($match != NULL)
+    function initialiseSession($type)
     {
-        echo "<h1>Match found: $match</h1>";
+        $tableName = "watchList";
+        $sql = createConnectionObject();
+
+        $_SESSION['numUsers'] = $_POST['numUsers'];
+
+        if (isset($_POST['clear']))
+        {
+            $query = "UPDATE $tableName SET Likes = 0";
+
+            $statement = $sql->prepare($query);
+            $statement->execute();
+        }
+
+        $entries = array();
+        $index = 0;
+
+        $query = "SELECT * FROM $tableName WHERE `Title Type` =  \"$type\"";
+
+        $statement = $sql->prepare($query);
+        $statement->execute();
+
+        $statement->bind_result(
+            $title,
+            $url,
+            $titleType,
+            $rating,
+            $runtime,
+            $genre,
+            $releaseDate,
+            $directors,
+            $position,
+            $likes
+        );
+
+        while ($statement->fetch())
+        {
+            $entry = new Movie();
+
+            $entry->title = $title;
+            $entry->url = $url;
+            $entry->titleType = $titleType;
+            $entry->rating = $rating;
+            $entry->runtime = $runtime;
+            $entry->genre = $genre;
+            $entry->releaseDate = $releaseDate;
+            $entry->directors = $directors;
+            $entry->position = $position;
+            $entry->likes = $likes;
+
+            array_push($entries, $entry);
+        }
+
+        $movie = $entries[$index];
+
+        $_SESSION['entries'] = $entries;
+
+        movie($movie);
+
+        $_SESSION['index'] = $index;
     }
 
-    
+    function matcher($result)
+    {
+        $index = $_SESSION['index'];
+        $movie = $_SESSION['entries'][$index];
 
-    
-    
-    $query = "SELECT * FROM $tableName WHERE position=$position";
-    
+        if ($result == "up")
+        {
+            $position = $movie->position;
+            $tableName = "watchlist";
+            $query = "UPDATE $tableName SET Likes = Likes + 1 WHERE Position = $position";
 
-    $statement = $sql->prepare($query);
-    $statement->execute();
-    $statement->bind_result
-    (
-        $dbPosition,
-        $likes,
-        $created,
-        $modified,
-        $description,
-        $title,
-        $url,
-        $titleType,
-        $rating,
-        $runtime,
-        $year,
-        $genres,
-        $numVotes,
-        $releaseDate,
-        $directors,
-        $yourRating,
-        $dateRated
-    );
-    $statement->fetch();
+            $sql = createConnectionObject();
+            $statement = $sql->prepare($query);
+            $statement->execute();
+        }
 
-    writeHeaders($title, "Movie Matcher");
-    echo "<p>Runtime: $runtime minutes</p>";
-    echo "<p>IMDB Rating: $rating</p>";
-    echo "<p>Genres: $genres</p>";
+        $index++;
+        $movie = $_SESSION['entries'][$index];
 
-    form("open");
+        movie($movie);
 
-    div("open");
-    label("Thumbs Up");
-    input("yesNo", 1, "yes", "radio");
-    div("close");
+        $_SESSION['index'] = $index;
+    }
 
-    div("open");
-    label("Thumbs Down");
-    input("yesNo", 1, "no", "radio");
-    div("close");
+    function movie($movie)
+    {
+        headers("Movie Matcher", "style.css");
 
-    button("next", "Next");
-    form("close");
-    writeFooters();
+        h1($movie->title);
+        a($movie->url);
+        br();
+
+        p("Rating: " . $movie->rating);
+        p("Runtime: " . $movie->runtime . " minutes");
+        p("Genre: " . $movie->genre);
+        p("Release Date: " . $movie->releaseDate);
+        p("Director: " . $movie->directors);
+
+        openForm();
+        button("up", "Thumbs Up");
+        button("down", "Thumbs Down");
+        closeForm();
+
+        footers();
+    }
+
+    function matchCheck()
+    {
+        $_SESSION['match'] = "blank";
+        $result = false;
+        $tableName = "watchlist";
+        $sql = createConnectionObject();
+        $query = "SELECT * FROM $tableName";
+
+        $statement = $sql->prepare($query);
+        $statement->execute();
+        
+        $statement->bind_result(
+            $title,
+            $url,
+            $titleType,
+            $rating,
+            $runtime,
+            $genre,
+            $releaseDate,
+            $directors,
+            $position,
+            $likes
+        );
+
+        while ($statement->fetch())
+        {
+            if ($likes >= $_SESSION['numUsers'])
+            {
+                $result = true;
+                $_SESSION['match'] = $title;
+                break;
+            }
+        }
+
+        return($result);
+    }
+
+    function displayMatch()
+    {
+        headers("Movie Matcher", "style.css");
+
+        h1("Match Found:");
+        h1($_SESSION['match']);
+
+        footers();
+    }
 ?>
